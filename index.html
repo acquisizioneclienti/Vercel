@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <title>Upload PDF – GHL</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body{font-family:sans-serif;background:#f8f9fa;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+    .box{background:#fff;padding:2rem;border-radius:8px;box-shadow:0 0 10px rgba(0,0,0,.1);text-align:center}
+    input{display:block;margin:1rem auto}
+    button{background:#007bff;color:#fff;border:0;padding:.6rem 1.2rem;border-radius:5px;cursor:pointer}
+    #msg{margin-top:1rem;font-weight:bold}
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h2>Carica PDF per creare sub-account</h2>
+    <form id="uForm">
+      <input type="file" id="pdf" name="file" accept="application/pdf" required />
+      <button type="submit">Invia</button>
+      <div id="msg"></div>
+    </form>
+  </div>
+
+<script>
+const f = document.getElementById('uForm');
+const m = document.getElementById('msg');
+
+f.addEventListener('submit', async e => {
+  e.preventDefault();
+  const file = document.getElementById('pdf').files[0];
+  if (!file) return;
+
+  const fd = new FormData();
+  fd.append('data', file);            //  <-- il campo si chiama "data"
+
+  try {
+    const r = await fetch('/api/upload', { method:'POST', body:fd });
+    if (r.ok) {
+      m.textContent = '✅ Sub-account creato!';
+      m.style.color = 'green';
+    } else {
+      m.textContent = '❌ Errore server ('+ r.status +')';
+      m.style.color = 'red';
+    }
+  } catch (err) {
+    m.textContent = '❌ Errore di rete';
+    m.style.color = 'red';
+  }
+});
+</script>
+</body>
+</html>
