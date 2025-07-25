@@ -1,46 +1,50 @@
-export const config = {  // <-- Vercel: disabilita il body-parser
-  api: { bodyParser: false },
-};
+export const config = { api: { bodyParser: false } };
 
 import Busboy from 'busboy';
-import FormData from 'form-data';
-import fetch from 'node-fetch';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
-  const busboy = Busboy({ headers: req.headers });
+  const bb   = Busboy({ headers: req.headers });
+  let buffer = Buffer.alloc(0);
+  let fname  = 'file.pdf';          // fallback
+  let mime   = 'application/pdf';   // fallback
 
-  let fileBuffer = Buffer.alloc(0);
-  let fileName   = 'file.pdf';
-  let fileType   = 'application/pdf';
+  bb.on('file', (_fld, file, filename, _enc, mimetype) => {
+    if (filename) fname = filename;
+    if (mimetype) mime  = mimetype;
 
-  // ❶ accumula il PDF
-  busboy.on('file', (_field, file, filename, _enc, mimetype) => {
-    if (filename)  fileName = filename;
-    if (mimetype)  fileType = mimetype;
-
-    file.on('data', (data) => { fileBuffer = Buffer.concat([fileBuffer, data]); });
+    file.on('data', d => { buffer = Buffer.concat([buffer, d]); });
   });
 
-  // ❷ quando finisce lo stream, inoltra a n8n
-  busboy.on('finish', async () => {
+  bb.on('finish', async () => {
     try {
-      const form = new FormData();
-      form.append('data', fileBuffer, { filename: fileName, contentType: fileType });
+      /* --- costruiamo il multipart “a mano” ------------------------- */
+      const boundary = '----vercelBoundary' + Date.now();
+      const head = Buffer.from(
+        `--${boundary}\r\n` +
+        `Content-Disposition: form-data; name="data"; filename="${fname}"\r\n` +
+        `Content-Type: ${mime}\r\n\r\n`
+      , 'utf8');
+      const tail = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8');
+      const body = Buffer.concat([head, buffer, tail]);
 
-      const gh = await fetch('https://api.acquisizioneclienti.it/webhook/manual-ghl-subaccount-openai', {
-        method: 'POST',
-        body:   form,
-      });
+      const gh = await fetch(
+        'https://api.acquisizioneclienti.it/webhook/manual-ghl-subaccount-openai',
+        {
+          method : 'POST',
+          headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+          body
+        }
+      );
 
       const txt = await gh.text();
       return res.status(gh.status).send(txt || 'OK');
     } catch (err) {
       console.error('Proxy error →', err);
-      return res.status(500).send('Errore proxy: ' + err.message);
+      return res.status(500).send('Proxy error: ' + err.message);
     }
   });
 
-  req.pipe(busboy);   // avvia lo streaming
+  req.pipe(bb);
 }
